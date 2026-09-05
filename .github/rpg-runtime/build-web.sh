@@ -121,7 +121,7 @@ build_frontend() {
     "$artifacts/mkxp-z_libretro.symbols"
   commit=$(git -C "$source_root" rev-parse HEAD)
   python3 "$source_root/.github/rpg-runtime/verify-release.py" \
-    --source "$source_root" \
+    --source "$root" \
     --output "$output" \
     --repository https://github.com/retrom-project/mkxp-z-libretro-emscripten \
     --tag retrom-core-f2efc98-r999999 \
