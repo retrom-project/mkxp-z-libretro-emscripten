@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+import runpy
 import subprocess
 from pathlib import Path
 
@@ -39,6 +40,19 @@ def validate_browser_abi(js_bytes: bytes) -> None:
                    b"_runtime_request_state", b"_runtime_request_exit"):
         if export not in js_bytes:
             raise ValueError("RPG_RUNTIME_RELEASE_STATE_ABI_INVALID")
+
+
+def validate_remote_content(platform_source: str, js_bytes: bytes, patch_file: Path) -> None:
+    # Both callers supply the pristine checkout/snapshot. Reapply the exact
+    # recipe in memory to check its anchors without mutating release sources.
+    patched_source = runpy.run_path(str(patch_file))["patch_retroarch"](platform_source)
+    if (
+        "FETCH_CHUNK_SIZE_BYTES" not in patched_source
+        or b"FETCHFS_RANGE_REQUIRED" not in js_bytes
+        or b"FETCHFS_RANGE_PROTOCOL_INVALID" not in js_bytes
+        or b"FETCHFS_RANGE_LENGTH_INVALID" not in js_bytes
+    ):
+        raise ValueError("RPG_RUNTIME_RELEASE_REMOTE_CONTENT_INVALID")
 
 
 def main() -> int:
@@ -85,13 +99,7 @@ def main() -> int:
         args.source / "retroarch/frontend/drivers/platform_emscripten.c"
     ).read_text(encoding="utf-8")
     js_bytes = js_path.read_bytes()
-    if (
-        "FETCH_CHUNK_SIZE_BYTES" not in platform_source
-        or b"FETCHFS_RANGE_REQUIRED" not in js_bytes
-        or b"FETCHFS_RANGE_PROTOCOL_INVALID" not in js_bytes
-        or b"FETCHFS_RANGE_LENGTH_INVALID" not in js_bytes
-    ):
-        raise SystemExit("RPG_RUNTIME_RELEASE_REMOTE_CONTENT_INVALID")
+    validate_remote_content(platform_source, js_bytes, remote_content_patch)
     validate_browser_abi(js_bytes)
 
     assets = []
