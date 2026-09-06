@@ -117,6 +117,15 @@ different URL. Escaped paths and query strings are preserved. The frontend
 build clears only its ephemeral container's Emscripten system-library cache
 after patching, ensuring a precompiled WasmFS cannot bypass this correction.
 
+The pinned Emscripten FetchFS worker constructs its readiness flag, mutex and
+condition variable before spawning its thread. The upstream declaration order
+spawns first, allowing an eager worker to access unconstructed synchronization
+and its ready signal to be overwritten, deadlocking before the first content
+request. The exact SDK header is hash-checked before patching. A deterministic
+native regression forces this early schedule, including against the full patched
+SDK header during every frontend build. This preserves the existing startup
+handshake, Range policy, owner-loop shutdown and checkpoint formats.
+
 Metadata digests describe the uploaded bytes for cache diagnostics. A consumer
 identifies the runtime by repository, tag, tag commit, asset filenames and
 `mkxp-state`; observed digests are not release identity.

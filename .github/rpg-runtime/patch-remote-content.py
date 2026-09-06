@@ -15,6 +15,25 @@ EMSCRIPTEN_FETCHFS_4_0_8_SHA256 = (
 EMSCRIPTEN_FETCH_BACKEND_4_0_8_SHA256 = (
     "1ff8036c23e9defca0b4987262fcacf6c388c7405d63e3946858eb56c8fe1f33"
 )
+EMSCRIPTEN_THREAD_UTILS_4_0_8_SHA256 = (
+    "fbe0af47479f48fe2d98ced5f6b3c618256be1332aa0b420f0567980fbf60e96"
+)
+
+OLD_WORKER_MEMBERS = """  ProxyingQueue queue;
+  std::thread thread;
+
+  // Used to notify the calling thread once the worker has been started.
+  bool started = false;
+  std::mutex mutex;
+  std::condition_variable cond;"""
+NEW_WORKER_MEMBERS = """  ProxyingQueue queue;
+
+  // Construct all worker-visible state before spawning the worker. C++ uses
+  // member declaration order, regardless of the constructor initializer list.
+  bool started = false;
+  std::mutex mutex;
+  std::condition_variable cond;
+  std::thread thread;"""
 
 OLD_FETCH_DECLARATIONS = """   char *fetch_manifest = getenv(\"FETCH_MANIFEST\");
    char *fetch_base_dir = getenv(\"FETCH_BASE_DIR\");"""
@@ -187,6 +206,18 @@ def patch_fetch_backend_cpp(source: str) -> str:
     )
 
 
+def patch_thread_utils(source: str) -> str:
+    # An eager worker used the mutex/condition before construction and its
+    # started=true could be overwritten by the parent's later initializer.
+    # Initialize its synchronization first; keep the existing handshake.
+    return replace_exact(
+        source,
+        OLD_WORKER_MEMBERS,
+        NEW_WORKER_MEMBERS,
+        "RPG_RUNTIME_FETCHFS_THREAD_INITIALIZATION_INVALID",
+    )
+
+
 def write_patched(path: Path, patcher: Callable[[str], str]) -> None:
     source = path.read_text(encoding="utf-8")
     patched = patcher(source)
@@ -205,6 +236,9 @@ def main() -> int:
     fetch_backend = args.emscripten_root / "system/lib/wasmfs/backends/fetch_backend.cpp"
     if hashlib.sha256(fetch_backend.read_bytes()).hexdigest() != EMSCRIPTEN_FETCH_BACKEND_4_0_8_SHA256:
         raise SystemExit("RPG_RUNTIME_EMSCRIPTEN_FETCH_BACKEND_SOURCE_INVALID")
+    thread_utils = args.emscripten_root / "system/lib/wasmfs/thread_utils.h"
+    if hashlib.sha256(thread_utils.read_bytes()).hexdigest() != EMSCRIPTEN_THREAD_UTILS_4_0_8_SHA256:
+        raise SystemExit("RPG_RUNTIME_EMSCRIPTEN_THREAD_UTILS_SOURCE_INVALID")
 
     try:
         write_patched(
@@ -213,6 +247,7 @@ def main() -> int:
         )
         write_patched(fetchfs, patch_emscripten)
         write_patched(fetch_backend, patch_fetch_backend_cpp)
+        write_patched(thread_utils, patch_thread_utils)
     except ValueError as error:
         raise SystemExit(str(error)) from error
     return 0
