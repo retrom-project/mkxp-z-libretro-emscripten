@@ -98,6 +98,8 @@ build_frontend() {
   python3 "$source_root/.github/rpg-runtime/patch-remote-content.py" \
     --source "$source_root" \
     --emscripten-root "$(em-config EMSCRIPTEN_ROOT)"
+  python3 "$source_root/.github/rpg-runtime/test_thread_startup.py" \
+    --sdk-header "$(em-config EMSCRIPTEN_ROOT)/system/lib/wasmfs/thread_utils.h"
   # FetchFS changes a system-library C++ source. Never reuse the image's
   # precompiled WasmFS in place of the patched source (container-local only).
   emcc --clear-cache

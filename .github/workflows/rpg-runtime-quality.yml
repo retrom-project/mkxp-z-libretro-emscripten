@@ -35,9 +35,14 @@ jobs:
           curl --fail --location --retry 3 \
             --output "${{ runner.temp }}/emscripten/system/lib/wasmfs/backends/fetch_backend.cpp" \
             https://raw.githubusercontent.com/emscripten-core/emscripten/4.0.8/system/lib/wasmfs/backends/fetch_backend.cpp
+          curl --fail --location --retry 3 \
+            --output "${{ runner.temp }}/emscripten/system/lib/wasmfs/thread_utils.h" \
+            https://raw.githubusercontent.com/emscripten-core/emscripten/4.0.8/system/lib/wasmfs/thread_utils.h
           python3 .github/rpg-runtime/patch-remote-content.py \
             --source "$GITHUB_WORKSPACE" \
             --emscripten-root "${{ runner.temp }}/emscripten"
+          python3 .github/rpg-runtime/test_thread_startup.py \
+            --sdk-header "${{ runner.temp }}/emscripten/system/lib/wasmfs/thread_utils.h"
           grep -n 'FETCH_CHUNK_SIZE_BYTES' \
             retroarch/frontend/drivers/platform_emscripten.c
           grep -n 'FETCHFS_RANGE_PROTOCOL_INVALID' \
