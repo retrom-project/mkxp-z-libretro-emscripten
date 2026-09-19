@@ -43,9 +43,9 @@ jobs:
             --emscripten-root "${{ runner.temp }}/emscripten"
           python3 .github/rpg-runtime/test_thread_startup.py \
             --sdk-header "${{ runner.temp }}/emscripten/system/lib/wasmfs/thread_utils.h"
-          grep -n 'FETCH_CHUNK_SIZE_BYTES' \
+          grep -n 'retrom_content_mount_manifest' \
             retroarch/frontend/drivers/platform_emscripten.c
-          grep -n 'FETCHFS_RANGE_PROTOCOL_INVALID' \
+          grep -n 'retrom_content_read_bridge' \
             "${{ runner.temp }}/emscripten/src/lib/libwasmfs_fetch.js"
           node .github/rpg-runtime/test-remote-content.mjs \
             "${{ runner.temp }}/emscripten/src/lib/libwasmfs_fetch.js"

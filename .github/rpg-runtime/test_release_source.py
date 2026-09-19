@@ -12,7 +12,7 @@ SPEC = importlib.util.spec_from_file_location("verify_release", RECIPE / "verify
 VERIFY = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(VERIFY)
 PATCH_FILE = RECIPE / "patch-remote-content.py"
-MARKERS = (b"FETCHFS_RANGE_REQUIRED", b"FETCHFS_RANGE_PROTOCOL_INVALID", b"FETCHFS_RANGE_LENGTH_INVALID")
+MARKERS = (b"retromContentBridge", b"content-io-v1", b"readIntoById", b"9601f63ba9d1bad095b42b32a3d6167166535be246a87f0efac7c5b125ed27bf")
 
 
 class ReleaseSourceTests(unittest.TestCase):
@@ -31,7 +31,7 @@ class ReleaseSourceTests(unittest.TestCase):
 
     def test_source_drift_and_already_patched_sources_are_rejected(self):
         patch = runpy.run_path(str(PATCH_FILE))
-        for source in (self.source.replace(patch["OLD_BACKEND"], "changed_backend();"),
+        for source in (self.source.replace("fetch = wasmfs_create_fetch_backend(base_url, 16*1024*1024);", "changed_backend();"),
                        patch["patch_retroarch"](self.source)):
             with self.subTest(source=source[:80]), self.assertRaises(ValueError):
                 VERIFY.validate_remote_content(source, self.javascript, PATCH_FILE)

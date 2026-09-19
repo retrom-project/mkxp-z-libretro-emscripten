@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Make RetroArch FetchFS strict and configurable for remote game content."""
+"""Replace locked FetchFS transport with Content I/O capability calls, retaining WasmFS."""
 
 from __future__ import annotations
 
@@ -35,107 +35,6 @@ NEW_WORKER_MEMBERS = """  ProxyingQueue queue;
   std::condition_variable cond;
   std::thread thread;"""
 
-OLD_FETCH_DECLARATIONS = """   char *fetch_manifest = getenv(\"FETCH_MANIFEST\");
-   char *fetch_base_dir = getenv(\"FETCH_BASE_DIR\");"""
-NEW_FETCH_DECLARATIONS = """   char *fetch_manifest = getenv(\"FETCH_MANIFEST\");
-   char *fetch_base_dir = getenv(\"FETCH_BASE_DIR\");
-   char *fetch_chunk_size_text = getenv(\"FETCH_CHUNK_SIZE_BYTES\");
-   unsigned long fetch_chunk_size = 0;"""
-
-OLD_FETCH_GUARD = """   if (fetch_manifest || fetch_base_dir)
-   {
-      /* fetch_manifest should be a path to a manifest file."""
-NEW_FETCH_GUARD = """   if (fetch_manifest || fetch_base_dir || fetch_chunk_size_text)
-   {
-      char *fetch_chunk_size_end = NULL;
-      errno = 0;
-      fetch_chunk_size = strtoul(fetch_chunk_size_text ? fetch_chunk_size_text : \"\", &fetch_chunk_size_end, 10);
-      if (!(fetch_manifest && fetch_base_dir && fetch_chunk_size_text) ||
-          errno != 0 || !fetch_chunk_size_end || *fetch_chunk_size_end != '\\0' ||
-          fetch_chunk_size < 64 * 1024 || fetch_chunk_size > 4 * 1024 * 1024 ||
-          (fetch_chunk_size & (fetch_chunk_size - 1)) != 0)
-      {
-         printf(\"[FetchFS] FETCH_MANIFEST, FETCH_BASE_DIR, and a power-of-two FETCH_CHUNK_SIZE_BYTES from 65536 to 4194304 are required\\n\");
-         abort();
-      }
-      /* fetch_manifest should be a path to a manifest file."""
-
-OLD_FETCH_REQUIREMENTS = """      if (!(fetch_manifest && fetch_base_dir))
-      {
-         printf(\"[FetchFS] must specify both FETCH_MANIFEST and FETCH_BASE_DIR\\n\");
-         abort();
-      }
-"""
-
-OLD_BACKEND = "fetch = wasmfs_create_fetch_backend(base_url, 16*1024*1024);"
-NEW_BACKEND = "fetch = wasmfs_create_fetch_backend(base_url, (int)fetch_chunk_size);"
-
-OLD_BASE_URL_TERMINATION = """         base_url[strcspn(base_url, "\\r\\n")] = '\\0'; // drop newline
-         base_url[len-1] = '\\0'; // drop newline"""
-NEW_BASE_URL_TERMINATION = """         base_url[strcspn(base_url, "\\r\\n")] = '\\0'; // terminate at the actual newline"""
-
-OLD_HEAD = """        if (fileInfo.ok &&
-            fileInfo.headers.has('Content-Length') &&
-            fileInfo.headers.get('Accept-Ranges') == 'bytes' &&
-            (parseInt(fileInfo.headers.get('Content-Length'), 10) > chunkSize*2)) {
-          var size = parseInt(fileInfo.headers.get('Content-Length'), 10);
-          wasmFS$JSMemoryRanges[file] = {
-            size,
-            chunks: [],
-            chunkSize: chunkSize
-          };
-          len = Math.min(len, size-offset);
-        } else {
-          // may as well/forced to download the whole file
-          var wholeFileReq = await fetch(url);
-          if (!wholeFileReq.ok) {
-            throw wholeFileReq;
-          }
-          var wholeFileData = new Uint8Array(await wholeFileReq.arrayBuffer());
-          var text = new TextDecoder().decode(wholeFileData);
-          wasmFS$JSMemoryRanges[file] = {
-            size: wholeFileData.byteLength,
-            chunks: [wholeFileData],
-            chunkSize: wholeFileData.byteLength
-          };
-          return Promise.resolve();
-        }"""
-
-NEW_HEAD = """        var contentLength = fileInfo.headers.get('Content-Length');
-        var size = Number(contentLength);
-        if (!fileInfo.ok ||
-            fileInfo.headers.get('Accept-Ranges') != 'bytes' ||
-            !contentLength || !/^[1-9][0-9]*$/.test(contentLength) ||
-            !Number.isSafeInteger(size)) {
-          throw {status: 502, code: 'FETCHFS_RANGE_REQUIRED'};
-        }
-        wasmFS$JSMemoryRanges[file] = {
-          size,
-          chunks: [],
-          chunkSize: chunkSize
-        };
-        len = Math.min(len, size-offset);"""
-
-OLD_RANGE = """      var end = (lastChunk+1) * chunkSize;
-      var response = await fetch(url, {headers:{'Range': `bytes=${start}-${end-1}`}});
-      if (!response.ok) {
-        throw response;
-      }
-      var bytes = await response['bytes']();"""
-
-NEW_RANGE = """      var end = Math.min((lastChunk+1) * chunkSize, wasmFS$JSMemoryRanges[file].size);
-      var response = await fetch(url, {headers:{'Range': `bytes=${start}-${end-1}`}});
-      var expectedContentRange = `bytes ${start}-${end-1}/${wasmFS$JSMemoryRanges[file].size}`;
-      if (response.status !== 206 ||
-          response.headers.get('Content-Range') !== expectedContentRange) {
-        throw {status: 502, code: 'FETCHFS_RANGE_PROTOCOL_INVALID'};
-      }
-      var bytes = await response['bytes']();
-      if (bytes.byteLength !== end-start) {
-        throw {status: 502, code: 'FETCHFS_RANGE_LENGTH_INVALID'};
-      }"""
-
-
 def replace_exact(source: str, old: str, new: str, code: str) -> str:
     if source.count(old) != 1 or (new and new in source):
         raise ValueError(code)
@@ -143,67 +42,43 @@ def replace_exact(source: str, old: str, new: str, code: str) -> str:
 
 
 def patch_retroarch(source: str) -> str:
-    source = replace_exact(
-        source,
-        OLD_FETCH_DECLARATIONS,
-        NEW_FETCH_DECLARATIONS,
-        "RPG_RUNTIME_FETCHFS_DECLARATIONS_INVALID",
-    )
-    source = replace_exact(
-        source,
-        OLD_FETCH_GUARD,
-        NEW_FETCH_GUARD,
-        "RPG_RUNTIME_FETCHFS_GUARD_INVALID",
-    )
-    source = replace_exact(
-        source,
-        OLD_FETCH_REQUIREMENTS,
-        "",
-        "RPG_RUNTIME_FETCHFS_REQUIREMENTS_INVALID",
-    )
-    source = replace_exact(
-        source,
-        OLD_BACKEND,
-        NEW_BACKEND,
-        "RPG_RUNTIME_FETCHFS_BACKEND_INVALID",
-    )
-    return replace_exact(
-        source,
-        OLD_BASE_URL_TERMINATION,
-        NEW_BASE_URL_TERMINATION,
-        "RPG_RUNTIME_FETCHFS_BASE_URL_TERMINATION_INVALID",
-    )
+    start = source.index('   if (fetch_manifest || fetch_base_dir)')
+    end = source.index('\n}\n#endif /* HAVE_EXTRA_WASMFS */', start)
+    if hashlib.sha256(source[start:end].encode()).hexdigest() != "f88cfb9f666dcd715b055d0bf1f9e3943012cf2b923f12b8fcb5f5c4d4a1860e":
+        raise ValueError("RPG_RUNTIME_CONTENT_MANIFEST_SOURCE_INVALID")
+    source = source[:start] + """   if (fetch_manifest || fetch_base_dir)
+   {
+      if (!(fetch_manifest && fetch_base_dir) ||
+          retrom_content_mount_manifest(fetch_manifest, fetch_base_dir) != 0)
+      {
+         printf("[ContentIO] RETROM_CONTENT_IO_V1 manifest invalid\\n");
+         abort();
+      }
+   }""" + source[end:]
+    return replace_exact(source, '#include <emscripten/wasmfs.h>',
+        '#include <emscripten/wasmfs.h>\n#include "retrom-content-bridge.h"',
+        'RPG_RUNTIME_CONTENT_MANIFEST_INCLUDE_INVALID')
 
 
 def patch_emscripten(source: str) -> str:
-    source = replace_exact(
-        source,
-        OLD_HEAD,
-        NEW_HEAD,
-        "RPG_RUNTIME_FETCHFS_HEAD_INVALID",
-    )
-    return replace_exact(
-        source,
-        OLD_RANGE,
-        NEW_RANGE,
-        "RPG_RUNTIME_FETCHFS_RANGE_INVALID",
-    )
+    if hashlib.sha256(source.encode()).hexdigest() != EMSCRIPTEN_FETCHFS_4_0_8_SHA256:
+        raise ValueError("RPG_RUNTIME_EMSCRIPTEN_FETCHFS_SOURCE_INVALID")
+    return (Path(__file__).parent / "content-io/libwasmfs_content.js").read_text()
 
 
 def patch_fetch_backend_cpp(source: str) -> str:
-    # FetchDirectory supplies a leading slash, while callers may already supply
-    # a trailing slash in the base. Join the boundary once; do not normalize or
-    # decode the remainder of a signed/escaped remote path.
-    return replace_exact(
-        source,
-        '  return baseUrl + "/" + filePath;',
-        '''  std::string prefix = baseUrl;
-  if (!prefix.empty() && prefix.back() == '/') {
-    prefix.pop_back();
+    source = replace_exact(source, '  return baseUrl + "/" + filePath;',
+        "  return filePath.front() == '/' ? filePath.substr(1) : filePath;",
+        'RPG_RUNTIME_CONTENT_FILE_ID_INVALID')
+    source = replace_exact(source, '  const std::string& getPath() const { return filePath; }',
+        """  int open(oflags_t flags) override {
+    return (flags & (O_WRONLY | O_RDWR | O_TRUNC | O_APPEND)) ? -EROFS : 0;
   }
-  return prefix + (filePath.front() == '/' ? "" : "/") + filePath;''',
-        "RPG_RUNTIME_FETCHFS_URL_JOIN_INVALID",
-    )
+  ssize_t write(const uint8_t*, size_t, off_t) override { return -EROFS; }
+  int setSize(off_t) override { return -EROFS; }
+  const std::string& getPath() const { return filePath; }""",
+        'RPG_RUNTIME_CONTENT_READ_ONLY_INVALID')
+    return source
 
 
 def patch_thread_utils(source: str) -> str:
@@ -218,10 +93,15 @@ def patch_thread_utils(source: str) -> str:
     )
 
 
-def write_patched(path: Path, patcher: Callable[[str], str]) -> None:
-    source = path.read_text(encoding="utf-8")
-    patched = patcher(source)
-    path.write_text(patched, encoding="utf-8")
+def patch_makefile(source: str) -> str:
+    extra = '$(OBJDIR)/frontend/drivers/retrom-content-bridge.o $(OBJDIR)/frontend/drivers/retrom-content-manifest.o'
+    source = replace_exact(source, 'RARCH_OBJ := $(addprefix $(OBJDIR)/,$(OBJ))',
+        'RARCH_OBJ := $(addprefix $(OBJDIR)/,$(OBJ)) ' + extra,
+        'RPG_RUNTIME_CONTENT_BUILD_INVALID')
+    source = replace_exact(source, '   CFLAGS += -pthread -s SHARED_MEMORY',
+        '   CFLAGS += -pthread -s SHARED_MEMORY\n   CXXFLAGS += -pthread -s SHARED_MEMORY',
+        'RPG_RUNTIME_CONTENT_BUILD_THREADS_INVALID')
+    return source + '\n' + extra + ': CXXFLAGS += -std=c++17 -O3\n'
 
 
 def main() -> int:
@@ -229,29 +109,28 @@ def main() -> int:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--emscripten-root", type=Path, required=True)
     args = parser.parse_args()
-
-    fetchfs = args.emscripten_root / "src/lib/libwasmfs_fetch.js"
-    if hashlib.sha256(fetchfs.read_bytes()).hexdigest() != EMSCRIPTEN_FETCHFS_4_0_8_SHA256:
-        raise SystemExit("RPG_RUNTIME_EMSCRIPTEN_FETCHFS_SOURCE_INVALID")
-    fetch_backend = args.emscripten_root / "system/lib/wasmfs/backends/fetch_backend.cpp"
-    if hashlib.sha256(fetch_backend.read_bytes()).hexdigest() != EMSCRIPTEN_FETCH_BACKEND_4_0_8_SHA256:
-        raise SystemExit("RPG_RUNTIME_EMSCRIPTEN_FETCH_BACKEND_SOURCE_INVALID")
-    thread_utils = args.emscripten_root / "system/lib/wasmfs/thread_utils.h"
-    if hashlib.sha256(thread_utils.read_bytes()).hexdigest() != EMSCRIPTEN_THREAD_UTILS_4_0_8_SHA256:
-        raise SystemExit("RPG_RUNTIME_EMSCRIPTEN_THREAD_UTILS_SOURCE_INVALID")
-
-    try:
-        write_patched(
-            args.source / "retroarch/frontend/drivers/platform_emscripten.c",
-            patch_retroarch,
-        )
-        write_patched(fetchfs, patch_emscripten)
-        write_patched(fetch_backend, patch_fetch_backend_cpp)
-        write_patched(thread_utils, patch_thread_utils)
-    except ValueError as error:
-        raise SystemExit(str(error)) from error
+    sources = [
+        ("src/lib/libwasmfs_fetch.js", EMSCRIPTEN_FETCHFS_4_0_8_SHA256, patch_emscripten),
+        ("system/lib/wasmfs/backends/fetch_backend.cpp", EMSCRIPTEN_FETCH_BACKEND_4_0_8_SHA256, patch_fetch_backend_cpp),
+        ("system/lib/wasmfs/thread_utils.h", EMSCRIPTEN_THREAD_UTILS_4_0_8_SHA256, patch_thread_utils),
+    ]
+    # Verify every anchor before any mutation; reject drift and reapplication.
+    outputs = []
+    for name, digest, patcher in sources:
+        path = args.emscripten_root / name
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise SystemExit("RPG_RUNTIME_CONTENT_SDK_SOURCE_INVALID:" + name)
+        outputs.append((path, patcher(path.read_text())))
+    platform = args.source / "retroarch/frontend/drivers/platform_emscripten.c"
+    outputs.append((platform, patch_retroarch(platform.read_text())))
+    for path, value in outputs:
+        path.write_text(value)
+    recipe = Path(__file__).parent / "content-io"
+    for name in ("retrom-content-bridge.h", "retrom-content-bridge.cpp", "retrom-content-manifest.cpp"):
+        (args.source / "retroarch/frontend/drivers" / name).write_bytes((recipe / name).read_bytes())
+    makefile = args.source / "retroarch/Makefile.emscripten"
+    makefile.write_text(patch_makefile(makefile.read_text()))
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

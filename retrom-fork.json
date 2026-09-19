@@ -27,7 +27,7 @@
     }
   ],
   "releaseTagPattern": "^retrom-core-(f2efc98|g[0-9a-f]{12})-r[1-9][0-9]*(-rc\\.[1-9][0-9]*)?$",
-  "adapterAbi": "mkxp-state",
+  "adapterAbi": "mkxp-content-io-v1",
   "releaseAssets": [
     "mkxp-z_libretro.js",
     "mkxp-z_libretro.wasm",
