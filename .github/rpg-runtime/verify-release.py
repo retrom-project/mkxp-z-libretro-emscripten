@@ -46,13 +46,11 @@ def validate_remote_content(platform_source: str, js_bytes: bytes, patch_file: P
     # Both callers supply the pristine checkout/snapshot. Reapply the exact
     # recipe in memory to check its anchors without mutating release sources.
     patched_source = runpy.run_path(str(patch_file))["patch_retroarch"](platform_source)
-    if (
-        "FETCH_CHUNK_SIZE_BYTES" not in patched_source
-        or b"FETCHFS_RANGE_REQUIRED" not in js_bytes
-        or b"FETCHFS_RANGE_PROTOCOL_INVALID" not in js_bytes
-        or b"FETCHFS_RANGE_LENGTH_INVALID" not in js_bytes
-    ):
+    markers = (b"retromContentBridge", b"content-io-v1", b"readIntoById",
+               b"9601f63ba9d1bad095b42b32a3d6167166535be246a87f0efac7c5b125ed27bf")
+    if "retrom_content_mount_manifest" not in patched_source or any(marker not in js_bytes for marker in markers):
         raise ValueError("RPG_RUNTIME_RELEASE_REMOTE_CONTENT_INVALID")
+
 
 
 def main() -> int:
@@ -81,9 +79,8 @@ def main() -> int:
         or "sha256sum" not in patch_text
         or "mkxp_retro::sandbox.has_value()" not in runtime_patch_text
         or "RPG_RUNTIME_RESTORE_GUARD_SOURCE_INVALID" not in runtime_patch_text
-        or "FETCH_CHUNK_SIZE_BYTES" not in remote_content_patch_text
-        or "FETCHFS_RANGE_PROTOCOL_INVALID" not in remote_content_patch_text
-        or "FETCHFS_RANGE_LENGTH_INVALID" not in remote_content_patch_text
+        or "retrom_content_mount_manifest" not in remote_content_patch_text
+        or "EMSCRIPTEN_FETCHFS_4_0_8_SHA256" not in remote_content_patch_text
     ):
         raise SystemExit("RPG_RUNTIME_RELEASE_BINDING_PATCH_INVALID")
 
@@ -112,13 +109,15 @@ def main() -> int:
             }
         )
     metadata = {
-        "adapterAbi": "mkxp-state",
+        "adapterAbi": "mkxp-content-io-v1",
         "assets": assets,
         "commit": args.commit,
         "digestPolicy": "OBSERVED_CACHE_INTEGRITY_ONLY",
         "remoteContent": {
-            "chunkSizeEnvironment": "FETCH_CHUNK_SIZE_BYTES",
-            "kind": "WASMFS_FETCH_RANGE_V1",
+            "blockSizeBytes": 262144,
+            "kind": "WASMFS_CONTENT_IO_V1",
+            "contentAbi": "content-io-v1",
+            "contractSha256": "9601f63ba9d1bad095b42b32a3d6167166535be246a87f0efac7c5b125ed27bf",
             "rangeRequired": True,
         },
         "repository": args.repository,
