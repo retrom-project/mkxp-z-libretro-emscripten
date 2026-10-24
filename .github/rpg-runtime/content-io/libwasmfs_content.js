@@ -19,15 +19,13 @@ addToLibrary({
         if (size < 0) {return -{{{ cDefs.ENOENT }}};}
         length = Math.min(length, Math.max(0, size - offset));
         offset = Math.min(offset, size);
-        const deadline = performance.now() + 15000;
         let done = 0;
-        // Even EOF/zero length traverses the bridge to enforce revocation.
+        // Even EOF/zero length traverses the bridge to enforce revocation. The runtime reader bounds each
+        // network attempt and waits through outages, so a portion has no deadline of its own here.
         do {
           const count = Math.min(262144, length - done), at = offset + done;
-          const timeout = Math.ceil(deadline - performance.now());
-          if (timeout <= 0) {return -{{{ cDefs.ETIMEDOUT }}};}
           const result = _retrom_content_read_bridge(id, at % 4294967296, Math.floor(at / 4294967296),
-            count, timeout, buffer + done);
+            count, buffer + done);
           if (result < 0) {return result;}
           if (result !== count) {return -{{{ cDefs.EIO }}};}
           done += result;
