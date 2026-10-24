@@ -48,11 +48,12 @@ int main() {
   assert(open("/game/game.mkxpz",O_WRONLY)<0 && errno==EROFS);
   assert(open("/game/game.mkxpz",O_WRONLY|O_TRUNC)<0 && errno==EROFS);
   memset(bytes,0x55,sizeof(bytes));
-  assert(retrom_content_read_bridge(game,128,0,8,40,(uintptr_t)bytes)==-ETIMEDOUT);
-  emscripten_thread_sleep(150);
-  for(auto byte:bytes)assert(byte==0x55);
-  assert(retrom_content_read_bridge(game,256,0,8,500,(uintptr_t)bytes)==-ECANCELED);
-  assert(retrom_content_read_bridge(game,0,0,0,500,(uintptr_t)bytes)==-ECANCELED);
+  // The fixture answers this read after 16 seconds, longer than the removed 15-second bridge deadline.
+  assert(retrom_content_read_bridge(game,128,0,8,(uintptr_t)bytes)==8);
+  for(unsigned i=0;i<8;++i)assert(bytes[i]==7);
+  for(unsigned i=8;i<sizeof(bytes);++i)assert(bytes[i]==0x55);
+  assert(retrom_content_read_bridge(game,256,0,8,(uintptr_t)bytes)==-ECANCELED);
+  assert(retrom_content_read_bridge(game,0,0,0,(uintptr_t)bytes)==-ECANCELED);
   close(fd);close(rtpFd);puts("CONTENT_FIXTURE_OK");
   return 0;
 }

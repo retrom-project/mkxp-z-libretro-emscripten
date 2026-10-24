@@ -15,7 +15,12 @@ await library._wasmfs_create_fetch_backend_js(1);const backend=wasmFS$backends[1
 assert.equal(await backend.getSize(1),5368709243);assert.equal(calls.length,0);
 assert.equal(await backend.read(1,64,17*1024*1024,4294967327),17*1024*1024);
 assert.equal(calls.length,68);assert.equal(calls[0][1],31);assert.equal(calls[0][2],1);
-assert.ok(calls.every(call=>call[3]===262144 && call[4]>0 && call[4]<=15000));
+assert.ok(calls.every(call=>call.length===5 && call[3]===262144));
+// A portion that waits for the network longer than the old 15-second read deadline does not fail the rest of the read.
+calls.length=0;const now=performance.now;let clock=0;performance.now=()=>clock;
+globalThis._retrom_content_read_bridge=(...args)=>{calls.push(args);clock+=20000;return args[3];};
+assert.equal(await backend.read(1,0,3*262144,0),3*262144);assert.equal(calls.length,3);
+performance.now=now;globalThis._retrom_content_read_bridge=(...args)=>{calls.push(args);return args[3];};
 assert.equal(await backend.write(),-69);
 assert.equal(await backend.read(1,0,-1,0),-28);
 assert.equal(await backend.read(1,0,5,5368709241),2);

@@ -11,7 +11,7 @@
 namespace {
 struct Task {
   std::string id;
-  uint32_t low, high, length, timeout;
+  uint32_t low, high, length;
   uintptr_t destination;
   em_proxying_ctx* context = nullptr;
   int32_t result = -EIO;
@@ -40,7 +40,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void retrom_content_finish(Task* task, int32_t r
   // No task access after finish: the waiting thread can immediately delete it.
 }
 EM_JS(void, startRead, (Task* task, const char* fileId, uint32_t low, uint32_t high,
-  uint32_t length, uint32_t timeout, uintptr_t destination), {
+  uint32_t length, uintptr_t destination), {
   const bridge = Module['retromContentBridge'];
   const expectedHash = '9601f63ba9d1bad095b42b32a3d6167166535be246a87f0efac7c5b125ed27bf';
   if (!bridge || bridge.abi !== 'content-io-v1' || bridge.contractSha256 !== expectedHash ||
@@ -53,12 +53,12 @@ EM_JS(void, startRead, (Task* task, const char* fileId, uint32_t low, uint32_t h
   let settled = false;
   const finish = (count, code) => {
     if (settled) {return;}
-    settled = true; clearTimeout(timer); pending.delete(task);
+    settled = true; pending.delete(task);
     controller.abort();
     if (code) {try {bridge.reportFailure(code);} catch (_) {}}
     _retrom_content_finish(task, count, code);
   };
-  const timer = setTimeout(() => finish(0, 9), timeout);
+  // No local deadline: the runtime reader bounds each network attempt and waits through outages.
   pending.set(task, () => finish(0, 11));
   Module['retromContentClose'] = () => {
     Module['retromContentClosed'] = true;
@@ -81,18 +81,18 @@ static void dispatch(em_proxying_ctx* context, void* opaque) {
   assert(emscripten_is_main_browser_thread());
   auto* task = static_cast<Task*>(opaque);
   task->context = context;
-  startRead(task, task->id.c_str(), task->low, task->high, task->length, task->timeout, task->destination);
+  startRead(task, task->id.c_str(), task->low, task->high, task->length, task->destination);
 }
 extern "C" EMSCRIPTEN_KEEPALIVE int32_t retrom_content_read_bridge(const char* fileId, uint32_t low,
-  uint32_t high, uint32_t length, uint32_t timeout, uintptr_t destination) {
-  if (emscripten_is_main_browser_thread() || !fileId || length > 262144 || !timeout || timeout > 15000 || high > 2097151) {
+  uint32_t high, uint32_t length, uintptr_t destination) {
+  if (emscripten_is_main_browser_thread() || !fileId || length > 262144 || high > 2097151) {
     return -EINVAL;
   }
   pthread_once(&queueOnce, initializeQueue);
   if (!queue) {return -EIO;}
   auto* task = new Task;
   task->id = fileId; task->low = low; task->high = high; task->length = length;
-  task->timeout = timeout; task->destination = destination;
+  task->destination = destination;
   if (!emscripten_proxy_sync_with_ctx(queue, emscripten_main_runtime_thread_id(), dispatch, task)) {
     // With the pinned SDK this means enqueue failure or target death, not a
     // read error. The UI context may already have been canceled by the SDK.
