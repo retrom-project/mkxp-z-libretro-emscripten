@@ -117,6 +117,8 @@ build_frontend() {
     HAVE_AL=0 \
     HAVE_WASMFS=1 \
     HAVE_EXTRA_WASMFS=1
+  python3 "$source_root/.github/rpg-runtime/patch-gamepad-source.py" \
+    --js "$source_root/retroarch/mkxp-z_libretro.js"
   install -m 0644 "$source_root/retroarch/mkxp-z_libretro.js" \
     "$output/mkxp-z_libretro.js"
   install -m 0644 "$source_root/retroarch/mkxp-z_libretro.wasm" \
