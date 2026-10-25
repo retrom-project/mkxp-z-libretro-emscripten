@@ -41,6 +41,36 @@ def patch_core(source: str) -> str:
         '#ifdef __EMSCRIPTEN__\n                runtime_game_failed();\n#endif')
 
 
+def patch_keyboard(source: str) -> str:
+    """Read the raw libretro keyboard with desktop mkxp-z's default RGSS bindings."""
+    return replace_exact(source,
+        "        for (uint8_t i = 0; i < NUM_BUTTONCODES; ++i)\n"
+        "            buttonStates[i] = getMappedState<false, false>(i);\n"
+        "    }\n",
+        "        for (uint8_t i = 0; i < NUM_BUTTONCODES; ++i)\n"
+        "            buttonStates[i] = getMappedState<false, false>(i);\n"
+        "\n"
+        "        /* Same defaults as desktop mkxp-z (keybindings.cpp); the browser has no\n"
+        "         * keyboard-to-RetroPad binds, so each key reaches the game once. */\n"
+        "        static const struct { uint16_t key; uint8_t button; } keyboardBindings[] = {\n"
+        "            {RETROK_LEFT, Input::Left}, {RETROK_RIGHT, Input::Right},\n"
+        "            {RETROK_UP, Input::Up}, {RETROK_DOWN, Input::Down},\n"
+        "            {RETROK_SPACE, Input::C}, {RETROK_RETURN, Input::C},\n"
+        "            {RETROK_ESCAPE, Input::B}, {RETROK_KP0, Input::B}, {RETROK_LSHIFT, Input::A},\n"
+        "            {RETROK_x, Input::B}, {RETROK_d, Input::Z}, {RETROK_q, Input::L},\n"
+        "            {RETROK_w, Input::R}, {RETROK_a, Input::X}, {RETROK_s, Input::Y},\n"
+        "        };\n"
+        "        for (const auto &binding : keyboardBindings)\n"
+        "            buttonStates[binding.button] = buttonStates[binding.button] || keyboardStates[binding.key];\n"
+        "        if (rgssVer == 1) {\n"
+        "            buttonStates[Input::A] = buttonStates[Input::A] || keyboardStates[RETROK_z];\n"
+        "            buttonStates[Input::C] = buttonStates[Input::C] || keyboardStates[RETROK_c];\n"
+        "        } else {\n"
+        "            buttonStates[Input::C] = buttonStates[Input::C] || keyboardStates[RETROK_z];\n"
+        "        }\n"
+        "    }\n")
+
+
 def patch_forced_assert(source: str) -> str:
     """Sandbox traps and forced assertions abort the core thread; publish the failure first."""
     source = replace_exact(source, "extern retro_log_printf_t mkxp_retro_log_printf;\n",
@@ -63,8 +93,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
     root = parser.parse_args().source / "mkxp-z"
-    for relative, patcher in (("src/display/font.cpp", patch_font), ("src/core.cpp", patch_core),
-                              ("src/util/forced-assert.h", patch_forced_assert)):
+    for relative, patcher in (("src/display/font.cpp", patch_font),
+                              ("src/core.cpp", patch_core),
+                              ("src/util/forced-assert.h", patch_forced_assert),
+                              ("src/input/input-retro.cpp", patch_keyboard)):
         path = root / relative
         path.write_text(patcher(path.read_text()), encoding="utf-8")
     wrap = root / "subprojects/physfs.wrap"

@@ -76,9 +76,25 @@ int main() {
                            check=True, capture_output=True)
             self.assertEqual(subprocess.run([str(root / "probe")], capture_output=True).returncode, 0)
 
+    def test_libretro_keyboard_uses_desktop_rgss_default_bindings(self):
+        patched = startup_patch((ROOT / "mkxp-z/src/input/input-retro.cpp").read_text(), "patch_keyboard")
+        update = patched.split("void updateButtonStates()", 1)[1].split("void updateDir4()", 1)[0]
+        desktop = (ROOT / "mkxp-z/src/input/keybindings.cpp").read_text()
+
+        def retrok(scancode: str) -> str:
+            return "RETROK_" + ("KP0" if scancode == "KP_0" else scancode.lower() if len(scancode) == 1 else scancode)
+
+        common = desktop.split("defaultKbBindings[] =", 1)[1].split("};", 1)[0]
+        for scancode, button in re.findall(r"SDL_SCANCODE_(\w+),\s*(Input::\w+)", common):
+            self.assertIn(f"{{{retrok(scancode)}, {button}}}", update)
+        self.assertIn("buttonStates[Input::A] || keyboardStates[RETROK_z]", update.split("} else {", 1)[0])
+        self.assertIn("buttonStates[Input::C] || keyboardStates[RETROK_c]", update.split("} else {", 1)[0])
+        self.assertIn("buttonStates[Input::C] || keyboardStates[RETROK_z]", update.split("} else {", 1)[1])
+
     def test_patch_recipe_rejects_source_drift_and_reapplication(self):
         for relative, function in (("src/display/font.cpp", "patch_font"), ("src/core.cpp", "patch_core"),
-                                   ("src/util/forced-assert.h", "patch_forced_assert")):
+                                   ("src/util/forced-assert.h", "patch_forced_assert"),
+                                   ("src/input/input-retro.cpp", "patch_keyboard")):
             source = (ROOT / "mkxp-z" / relative).read_text()
             patched = startup_patch(source, function)
             with self.assertRaisesRegex(ValueError, "MKXP_STARTUP_SOURCE_INVALID"):
