@@ -28,7 +28,7 @@ class StateIOTests(unittest.TestCase):
         verify = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(verify)
         required = [b"_runtime_get_frame_count", b"_runtime_request_exit",
-                    b"_runtime_get_state_result", b"_runtime_request_state"]
+                    b"_runtime_get_state_result", b"_runtime_get_game_result", b"_runtime_request_state"]
         verify.validate_browser_abi(b" ".join(required))
         for missing in required:
             with self.assertRaisesRegex(ValueError, "RPG_RUNTIME_RELEASE_STATE_ABI_INVALID"):

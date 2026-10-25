@@ -36,7 +36,7 @@ def gitlink(source: Path, path: str) -> str:
 
 
 def validate_browser_abi(js_bytes: bytes) -> None:
-    for export in (b"_runtime_get_frame_count", b"_runtime_get_state_result",
+    for export in (b"_runtime_get_frame_count", b"_runtime_get_state_result", b"_runtime_get_game_result",
                    b"_runtime_request_state", b"_runtime_request_exit"):
         if export not in js_bytes:
             raise ValueError("RPG_RUNTIME_RELEASE_STATE_ABI_INVALID")

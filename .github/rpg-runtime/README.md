@@ -42,6 +42,29 @@ Frames alone never imply restore success. These observations require no
 preload script, map position, fixture variable, or host-provided proof.
 They do not alter the mkxp sandbox bindings or the checkpoint format.
 
+`Module._runtime_get_game_result()` returns zero until a game exception, then
+minus one for the remainder of that runtime instance. The core publishes the
+atomic result before destroying the failed Ruby sandbox. Hosts must stop play
+and checkpoint availability on this result, even after successful opening frames;
+native diagnostics retain the original exception text.
+
+The core build uses the same font-path selection for localized SFNT aliases as
+for FreeType family names. ZIP directory metadata reads use central-directory
+records; regular-file local headers are validated when opening file bytes.
+This keeps case-insensitive path-cache creation from fetching blocks throughout
+a large remote project. Symlink resolution and already-broken entries retain
+their existing checks.
+
+The native startup regressions execute the patched upstream font selector and
+PhysFS ZIP stat. Prepare their hash-checked source input before running them:
+
+```sh
+mkdir -p .cache/test-inputs
+curl --fail --location --output .cache/test-inputs/physfs_archiver_zip.c \
+  https://raw.githubusercontent.com/icculus/physfs/release-3.2.0/src/physfs_archiver_zip.c
+python3 -m unittest discover -s .github/rpg-runtime -p 'test_*.py'
+```
+
 `Module._runtime_request_state(1)` requests a save, and operation `2` requests
 a restore. The function only atomically publishes intent and returns one when
 accepted, zero for an invalid or overlapping request. The owning loop consumes

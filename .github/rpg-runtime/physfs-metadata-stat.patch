@@ -1,0 +1,10 @@
+--- a/src/physfs_archiver_zip.c
++++ b/src/physfs_archiver_zip.c
+@@ -1664,2 +1664,6 @@
+-    else if (!zip_resolve(info->io, info, entry))
++    /* Central-directory metadata is sufficient for regular-file stat.
++     * Validate its local header when opening bytes, not while listing
++     * every member of a seekable remote archive. */
++    else if ((entry->tree.isdir || (entry->resolved != ZIP_UNRESOLVED_FILE)) &&
++             !zip_resolve(info->io, info, entry))
+         return 0;
