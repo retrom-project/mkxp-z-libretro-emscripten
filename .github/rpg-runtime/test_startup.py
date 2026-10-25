@@ -76,6 +76,17 @@ int main() {
                            check=True, capture_output=True)
             self.assertEqual(subprocess.run([str(root / "probe")], capture_output=True).returncode, 0)
 
+    def test_font_name_scan_streams_instead_of_reading_whole_fonts(self):
+        patched = startup_patch(startup_patch((ROOT / "mkxp-z/src/display/font.cpp").read_text(), "patch_font"),
+                                "patch_font_scan")
+        scan = patched.split("void SharedFontState::initFontSetCB(", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("ftOpenFile(ops, true)", scan)
+        opener = patched.split("ftOpenFile(std::shared_ptr<struct FileSystem::File> ops", 1)[1]
+        whole = opener.index("PHYSFS_readBytes(ops.get()->get_read(), data")
+        self.assertIn("if (!namesOnly && shState->config().loadFontsIntoMemory) {", opener[:whole])
+        # Rendering still opens the pooled face with the configured in-memory policy.
+        self.assertRegex(patched, r"entry = p->ftOpenFile\(std::shared_ptr<struct FileSystem::File>\([^;]*\)\);")
+
     def test_libretro_keyboard_uses_desktop_rgss_default_bindings(self):
         patched = startup_patch((ROOT / "mkxp-z/src/input/input-retro.cpp").read_text(), "patch_keyboard")
         update = patched.split("void updateButtonStates()", 1)[1].split("void updateDir4()", 1)[0]
