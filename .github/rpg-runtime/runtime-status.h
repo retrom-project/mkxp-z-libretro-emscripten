@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 void runtime_frame_presented(void);
+void runtime_game_failed(void);
 enum { RUNTIME_STATE_SAVE = 1, RUNTIME_STATE_RESTORE = 2 };
 int runtime_take_state_request(void);
 void runtime_state_finished(bool success);

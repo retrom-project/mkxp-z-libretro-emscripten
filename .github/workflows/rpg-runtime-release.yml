@@ -52,7 +52,12 @@ jobs:
           test "$(git rev-parse HEAD:retroarch)" = 69a4f0ea1e8aaf442ae4858f2e7f2b31a1776576
 
       - name: Validate build and native boundary regressions
-        run: python3 -m unittest discover -s .github/rpg-runtime -p 'test_*.py'
+        run: |
+          mkdir -p .cache/test-inputs
+          curl --fail --location --retry 3 \
+            --output .cache/test-inputs/physfs_archiver_zip.c \
+            https://raw.githubusercontent.com/icculus/physfs/release-3.2.0/src/physfs_archiver_zip.c
+          python3 -m unittest discover -s .github/rpg-runtime -p 'test_*.py'
 
       - name: Restore content-verified intermediate build cache
         uses: actions/cache@v5

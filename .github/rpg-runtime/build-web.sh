@@ -52,6 +52,8 @@ build_core() {
     --source "$source_root"
   python3 "$source_root/.github/rpg-runtime/patch-build-memory.py" \
     --source "$source_root"
+  python3 "$source_root/.github/rpg-runtime/patch-startup.py" \
+    --source "$source_root"
   mkdir -p "$source_root/mkxp-z/libretro/build/libretro-stage1"
   cp -a "$artifacts/stage1/." \
     "$source_root/mkxp-z/libretro/build/libretro-stage1/"

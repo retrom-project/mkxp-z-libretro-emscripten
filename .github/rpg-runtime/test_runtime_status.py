@@ -23,6 +23,23 @@ def patch_module():
 
 
 class RuntimeStatusTests(unittest.TestCase):
+    def test_game_exception_remains_observable_after_opening_frames(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "status.so"
+            subprocess.run([
+                "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-shared", "-fPIC",
+                str(RECIPE / "runtime-status.c"), "-o", str(output),
+            ], check=True, capture_output=True)
+            status = ctypes.CDLL(str(output))
+            self.assertEqual(status.runtime_get_game_result(), 0)
+            status.runtime_frame_presented()
+            status.runtime_game_failed()
+            status.runtime_frame_presented()
+            self.assertEqual(status.runtime_get_frame_count(), 2)
+            self.assertEqual(status.runtime_get_game_result(), -1)
+            status.runtime_state_finished(True)
+            self.assertEqual(status.runtime_get_game_result(), -1)
+
     def test_browser_exit_only_requests_teardown_on_the_core_loop(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "status.so"

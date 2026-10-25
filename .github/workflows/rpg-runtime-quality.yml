@@ -24,6 +24,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m compileall -q .github/rpg-runtime
+          mkdir -p .cache/test-inputs
+          curl --fail --location --retry 3 \
+            --output .cache/test-inputs/physfs_archiver_zip.c \
+            https://raw.githubusercontent.com/icculus/physfs/release-3.2.0/src/physfs_archiver_zip.c
           python3 -m unittest discover -s .github/rpg-runtime -p 'test_*.py'
           curl --fail --location --retry 3 \
             --output "${{ runner.temp }}/libwasmfs_fetch.js" \

@@ -12,6 +12,18 @@ static uint32_t presented_frames;
 enum { STATE_RUNNING = 3, STATE_SUCCEEDED = 4, STATE_FAILED = -1 };
 static int state_operation;
 static int exit_requested;
+static int game_result;
+
+/* A Ruby exception can stop game rendering while RetroArch stays alive. */
+void runtime_game_failed(void)
+{
+   __atomic_store_n(&game_result, -1, __ATOMIC_RELEASE);
+}
+
+EMSCRIPTEN_KEEPALIVE int runtime_get_game_result(void)
+{
+   return __atomic_load_n(&game_result, __ATOMIC_ACQUIRE);
+}
 
 /* The browser must not execute C++ destructors while the core/audio threads
  * still use their globals. Only publish intent here; the core loop owns exit. */
