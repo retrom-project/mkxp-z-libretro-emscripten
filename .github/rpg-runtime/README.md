@@ -32,6 +32,12 @@ against the transient empty sandbox state observed after a successful
 libretro `retro_unserialize`; without the guard the next frame aborts before
 restored game input can resume.
 
+Stage 1 applies `ruby-try-catch-unwind.patch` to the pinned WASI Ruby clone.
+Ruby's try/catch loop stops a caught longjmp unwind without clearing
+`rb_asyncify_unwind_buf`; mkxp's host yield then looked like a Ruby unwind and
+the root loop rewound an empty thread buffer (`Sandbox trap`) when a Fiber
+rescued an exception before calling `Graphics.update`.
+
 The browser can read `Module._runtime_get_frame_count()` and
 `Module._runtime_get_state_result()` from the main thread without invoking
 RetroArch GL commands. Both read atomics maintained by the core thread. Frame

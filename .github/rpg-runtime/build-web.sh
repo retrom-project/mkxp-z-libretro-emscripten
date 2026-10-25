@@ -30,6 +30,7 @@ build_stage1() {
   git -C "$source_root/mkxp-z" apply \
     "$source_root/.github/rpg-runtime/mkxp-deterministic-bindings.patch"
   python3 "$source_root/.github/rpg-runtime/patch-runtime.py" --source "$source_root"
+  python3 "$source_root/.github/rpg-runtime/patch-ruby.py" --source "$source_root"
   make -C "$source_root/mkxp-z/libretro" -j "$jobs" \
     PWD="$source_root/mkxp-z/libretro" \
     WASI_SDK="$work/wasi" \
