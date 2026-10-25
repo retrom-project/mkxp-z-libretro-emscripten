@@ -21,6 +21,25 @@ def patch_font(source: str) -> str:
         "\t\tconst char *path = req->c_str(); // Include localized SFNT aliases.")
 
 
+def patch_font_scan(source: str) -> str:
+    """The startup scan needs only SFNT names; never download every font whole for it."""
+    source = replace_exact(source,
+        "\tboost::optional<SharedFontStatePrivate::PoolEntry> ftOpenFile(std::shared_ptr<struct FileSystem::File> ops)\n"
+        "\t{\n"
+        "\t\tSharedFontStatePrivate::PoolEntry entry;\n"
+        "\n"
+        "\t\tif (shState->config().loadFontsIntoMemory) {",
+        "\tboost::optional<SharedFontStatePrivate::PoolEntry> ftOpenFile(std::shared_ptr<struct FileSystem::File> ops, bool namesOnly = false)\n"
+        "\t{\n"
+        "\t\tSharedFontStatePrivate::PoolEntry entry;\n"
+        "\n"
+        "\t\t/* Remote game files make a whole-file read a download; reading names streams a few tables. */\n"
+        "\t\tif (!namesOnly && shState->config().loadFontsIntoMemory) {")
+    return replace_exact(source,
+        "\tboost::optional<SharedFontStatePrivate::PoolEntry> entry = p->ftOpenFile(ops);\n",
+        "\tboost::optional<SharedFontStatePrivate::PoolEntry> entry = p->ftOpenFile(ops, true);\n")
+
+
 def patch_zip(source: str) -> str:
     return replace_exact(source,
         "    else if (!zip_resolve(info->io, info, entry))\n        return 0;",
@@ -93,7 +112,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
     root = parser.parse_args().source / "mkxp-z"
-    for relative, patcher in (("src/display/font.cpp", patch_font),
+    for relative, patcher in (("src/display/font.cpp", lambda source: patch_font_scan(patch_font(source))),
                               ("src/core.cpp", patch_core),
                               ("src/util/forced-assert.h", patch_forced_assert),
                               ("src/input/input-retro.cpp", patch_keyboard)):
