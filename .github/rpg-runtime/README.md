@@ -38,6 +38,10 @@ Ruby's try/catch loop stops a caught longjmp unwind without clearing
 the root loop rewound an empty thread buffer (`Sandbox trap`) when a Fiber
 rescued an exception before calling `Graphics.update`.
 
+A native sandbox trap or forced assertion publishes the failed game result
+before aborting the core thread, so the browser reports the failure instead of
+leaving a stopped canvas.
+
 The browser can read `Module._runtime_get_frame_count()` and
 `Module._runtime_get_state_result()` from the main thread without invoking
 RetroArch GL commands. Both read atomics maintained by the core thread. Frame

@@ -49,8 +49,36 @@ class StartupTests(unittest.TestCase):
         self.assertLess(fatal.index("runtime_game_failed();"), fatal.index("deinit_sandbox();"))
         self.assertIn('extern "C" void runtime_game_failed(void);', patched)
 
+    def test_forced_assertion_publishes_game_failure_before_aborting(self):
+        patched = startup_patch((ROOT / "mkxp-z/src/util/forced-assert.h").read_text(), "patch_forced_assert")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "forced-assert.h").write_text(patched)
+            (root / "libretro.h").write_text(
+                "enum retro_log_level { RETRO_LOG_ERROR = 3 };\n"
+                "typedef void (*retro_log_printf_t)(enum retro_log_level, const char *, ...);\n")
+            (root / "probe.cpp").write_text(r'''
+#include <csignal>
+#include <unistd.h>
+#include "forced-assert.h"
+static volatile int failed;
+static void ignore_log(enum retro_log_level, const char *, ...) {}
+retro_log_printf_t mkxp_retro_log_printf = ignore_log;
+extern "C" void runtime_game_failed(void) { failed = 1; }
+int main() {
+  std::signal(SIGABRT, [](int) { _exit(failed ? 0 : 2); });
+  MKXPZ_FORCED_ASSERT_WITH_MESSAGE(false, "Sandbox trap");
+  return 3;
+}
+''')
+            subprocess.run(["c++", "-std=c++17", "-Wall", "-Werror", "-DMKXPZ_RETRO", "-D__EMSCRIPTEN__",
+                            "-I", str(root), str(root / "probe.cpp"), "-o", str(root / "probe")],
+                           check=True, capture_output=True)
+            self.assertEqual(subprocess.run([str(root / "probe")], capture_output=True).returncode, 0)
+
     def test_patch_recipe_rejects_source_drift_and_reapplication(self):
-        for relative, function in (("src/display/font.cpp", "patch_font"), ("src/core.cpp", "patch_core")):
+        for relative, function in (("src/display/font.cpp", "patch_font"), ("src/core.cpp", "patch_core"),
+                                   ("src/util/forced-assert.h", "patch_forced_assert")):
             source = (ROOT / "mkxp-z" / relative).read_text()
             patched = startup_patch(source, function)
             with self.assertRaisesRegex(ValueError, "MKXP_STARTUP_SOURCE_INVALID"):

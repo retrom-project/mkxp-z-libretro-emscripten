@@ -41,11 +41,30 @@ def patch_core(source: str) -> str:
         '#ifdef __EMSCRIPTEN__\n                runtime_game_failed();\n#endif')
 
 
+def patch_forced_assert(source: str) -> str:
+    """Sandbox traps and forced assertions abort the core thread; publish the failure first."""
+    source = replace_exact(source, "extern retro_log_printf_t mkxp_retro_log_printf;\n",
+        "extern retro_log_printf_t mkxp_retro_log_printf;\n"
+        "#  ifdef __EMSCRIPTEN__\n"
+        "extern \"C\" void runtime_game_failed(void);\n"
+        "#    define MKXPZ_RUNTIME_GAME_FAILED() runtime_game_failed()\n"
+        "#  else\n"
+        "#    define MKXPZ_RUNTIME_GAME_FAILED() ((void)0)\n"
+        "#  endif\n")
+    return replace_exact(source,
+        "        ::mkxp_retro_log_printf(RETRO_LOG_ERROR, fmt, message); \\\n"
+        "        std::fflush(stderr); \\\n",
+        "        ::mkxp_retro_log_printf(RETRO_LOG_ERROR, fmt, message); \\\n"
+        "        std::fflush(stderr); \\\n"
+        "        MKXPZ_RUNTIME_GAME_FAILED(); \\\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
     root = parser.parse_args().source / "mkxp-z"
-    for relative, patcher in (("src/display/font.cpp", patch_font), ("src/core.cpp", patch_core)):
+    for relative, patcher in (("src/display/font.cpp", patch_font), ("src/core.cpp", patch_core),
+                              ("src/util/forced-assert.h", patch_forced_assert)):
         path = root / relative
         path.write_text(patcher(path.read_text()), encoding="utf-8")
     wrap = root / "subprojects/physfs.wrap"
