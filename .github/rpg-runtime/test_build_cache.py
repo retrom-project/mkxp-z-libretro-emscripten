@@ -23,7 +23,8 @@ class BuildCacheTests(unittest.TestCase):
             (root / "mkxp-z/ruby.c").write_bytes(b"input")
             recipe = root / ".github/rpg-runtime"
             recipe.mkdir(parents=True)
-            for name in ("patch-runtime.py", "mkxp-deterministic-bindings.patch"):
+            for name in ("patch-runtime.py", "mkxp-deterministic-bindings.patch", "patch-ruby.py",
+                         "ruby-try-catch-unwind.patch"):
                 (recipe / name).write_bytes(b"recipe")
             script = (
                 "stage1_image=locked\nemscripten_image=locked\n"

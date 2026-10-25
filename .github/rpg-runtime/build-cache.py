@@ -76,7 +76,8 @@ def stage1_key(source: Path) -> str:
     # Git's portable object metadata is not compiler input.
     inputs = {name: value for name, value in inputs.items() if ".git" not in Path(name).parts}
     inputs["recipe/stage1"] = hashlib.sha256(phase_recipe(source, "stage1").encode()).hexdigest()
-    for name in ("patch-runtime.py", "mkxp-deterministic-bindings.patch"):
+    for name in ("patch-runtime.py", "mkxp-deterministic-bindings.patch", "patch-ruby.py",
+                 "ruby-try-catch-unwind.patch"):
         inputs["recipe/" + name] = digest(source / ".github/rpg-runtime" / name)
     return hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
 

@@ -1,0 +1,14 @@
+diff --git a/wasm/setjmp.c b/wasm/setjmp.c
+index 32ede68..3b3f6e5 100644
+--- a/wasm/setjmp.c
++++ b/wasm/setjmp.c
+@@ -181,6 +181,9 @@ rb_wasm_try_catch_loop_run(struct rb_wasm_try_catch *try_catch, rb_wasm_jmp_buf
+             // stop unwinding
+             // (but call stop_rewind to update the asyncify state to "normal" from "unwind")
+             asyncify_stop_rewind();
++            // this longjmp unwind is complete; a stale buffer would make the
++            // next unrelated unwind look like a Ruby-owned one at the root
++            rb_asyncify_unwind_buf = NULL;
+             // reset the stack pointer to what it was before the most recent call to try_f or catch_f
+             rb_wasm_set_stack_pointer(try_catch->stack_pointer);
+             // clear the active jmpbuf because it's already stopped
