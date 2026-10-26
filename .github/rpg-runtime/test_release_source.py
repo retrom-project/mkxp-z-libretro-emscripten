@@ -12,7 +12,7 @@ SPEC = importlib.util.spec_from_file_location("verify_release", RECIPE / "verify
 VERIFY = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(VERIFY)
 PATCH_FILE = RECIPE / "patch-remote-content.py"
-MARKERS = (b"retromContentBridge", b"content-io-v1", b"readIntoById", b"9601f63ba9d1bad095b42b32a3d6167166535be246a87f0efac7c5b125ed27bf")
+MARKERS = (b"retromContentBridge", b"content-io-v1", b"readIntoById", b"e1f59c8e5e6c1175444a09c0e8c8c4095a3be6d6c3d836a1c594e4f67f026e21")
 
 
 class ReleaseSourceTests(unittest.TestCase):

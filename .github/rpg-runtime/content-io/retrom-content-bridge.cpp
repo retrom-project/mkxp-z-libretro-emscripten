@@ -42,7 +42,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void retrom_content_finish(Task* task, int32_t r
 EM_JS(void, startRead, (Task* task, const char* fileId, uint32_t low, uint32_t high,
   uint32_t length, uintptr_t destination), {
   const bridge = Module['retromContentBridge'];
-  const expectedHash = '9601f63ba9d1bad095b42b32a3d6167166535be246a87f0efac7c5b125ed27bf';
+  const expectedHash = 'e1f59c8e5e6c1175444a09c0e8c8c4095a3be6d6c3d836a1c594e4f67f026e21';
   if (!bridge || bridge.abi !== 'content-io-v1' || bridge.contractSha256 !== expectedHash ||
       typeof bridge.readIntoById !== 'function' || typeof bridge.reportFailure !== 'function') {
     _retrom_content_finish(task, 0, 16); return;

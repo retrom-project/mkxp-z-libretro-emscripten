@@ -47,7 +47,7 @@ def validate_remote_content(platform_source: str, js_bytes: bytes, patch_file: P
     # recipe in memory to check its anchors without mutating release sources.
     patched_source = runpy.run_path(str(patch_file))["patch_retroarch"](platform_source)
     markers = (b"retromContentBridge", b"content-io-v1", b"readIntoById",
-               b"9601f63ba9d1bad095b42b32a3d6167166535be246a87f0efac7c5b125ed27bf")
+               b"e1f59c8e5e6c1175444a09c0e8c8c4095a3be6d6c3d836a1c594e4f67f026e21")
     if "retrom_content_mount_manifest" not in patched_source or any(marker not in js_bytes for marker in markers):
         raise ValueError("RPG_RUNTIME_RELEASE_REMOTE_CONTENT_INVALID")
 
@@ -117,7 +117,7 @@ def main() -> int:
             "blockSizeBytes": 262144,
             "kind": "WASMFS_CONTENT_IO_V1",
             "contentAbi": "content-io-v1",
-            "contractSha256": "9601f63ba9d1bad095b42b32a3d6167166535be246a87f0efac7c5b125ed27bf",
+            "contractSha256": "e1f59c8e5e6c1175444a09c0e8c8c4095a3be6d6c3d836a1c594e4f67f026e21",
             "rangeRequired": True,
         },
         "repository": args.repository,
