@@ -60,6 +60,7 @@ def main() -> int:
     parser.add_argument("--repository", required=True)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--commit", required=True)
+    parser.add_argument("--check-existing", action="store_true")
     args = parser.parse_args()
 
     if TAG.fullmatch(args.tag) is None or COMMIT.fullmatch(args.commit) is None:
@@ -125,7 +126,18 @@ def main() -> int:
         "sourceCommits": EXPECTED_GITLINKS,
         "tag": args.tag,
     }
-    (args.output / "rpg-runtime-release.json").write_text(
+    manifest = args.output / "rpg-runtime-release.json"
+    if args.check_existing:
+        if manifest.is_symlink() or not manifest.is_file():
+            raise SystemExit("RPG_RUNTIME_RELEASE_METADATA_INVALID")
+        try:
+            existing = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            raise SystemExit("RPG_RUNTIME_RELEASE_METADATA_INVALID") from error
+        if existing != metadata:
+            raise SystemExit("RPG_RUNTIME_RELEASE_ASSETS_CHANGED")
+        return 0
+    manifest.write_text(
         json.dumps(metadata, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )

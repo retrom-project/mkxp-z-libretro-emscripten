@@ -28,9 +28,11 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('.github/rpg-runtime/build-web.sh "$output"', workflow)
         self.assertNotIn("emmake make", workflow)
         self.assertNotIn("meson setup", workflow)
-        self.assertEqual(workflow.count("uses: actions/checkout@"), 1)
-        self.assertLess(workflow.index("build-web.sh"), workflow.index("verify-release.py"))
-        self.assertIn('test "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = tag', workflow)
+        build = workflow.split("  build:\n", 1)[1].split("  candidate:\n", 1)[0]
+        self.assertEqual(build.count("uses: actions/checkout@"), 1)
+        self.assertLess(build.index("build-web.sh"), build.index("verify-release.py"))
+        identity = (ROOT / ".github/rpg-runtime/verify-release-identity.sh").read_text()
+        self.assertIn('test "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = tag', identity)
 
     def test_release_identity_uses_the_organization_and_core_tag_namespace(self) -> None:
         contract = json.loads((ROOT / "retrom-fork.json").read_text(encoding="utf-8"))
@@ -48,8 +50,10 @@ class ReleaseWorkflowTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/rpg-runtime-release.yml").read_text(encoding="utf-8")
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
-        self.assertIn(f'{CHECKPOINT}.."$GITHUB_SHA"', workflow)
-        self.assertIn("git rev-list --min-parents=2", workflow)
+        identity = (ROOT / ".github/rpg-runtime/verify-release-identity.sh").read_text()
+        self.assertIn("bash .github/rpg-runtime/verify-release-identity.sh", workflow)
+        self.assertIn(f'{CHECKPOINT}.."$GITHUB_SHA"', identity)
+        self.assertIn("git rev-list --min-parents=2", identity)
         self.assertIn("must\n  use squash merge", agents)
         self.assertIn(CHECKPOINT, agents)
 
