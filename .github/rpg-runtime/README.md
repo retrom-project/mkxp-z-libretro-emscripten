@@ -26,6 +26,13 @@ it rechecks the annotated tag and ancestry before publishing. A failed handoff
 or publish can use **Re-run failed jobs** without rebuilding, while the seven-day
 build artifact remains available. Local diagnostic symbol maps are not assets.
 
+Candidate and publishing jobs shallow-check out only the pinned `retroarch`
+submodule needed for asset verification. They check its actual HEAD against the
+superproject gitlink; other gitlink identities are read from the superproject
+tree. The publishing job retains the superproject's full history for annotated
+tag, ancestry and merge-commit checks. The build job still prepares its complete
+recursive source tree.
+
 ## CI cache reuse and timings
 
 The default maintenance branch builds when Stage 1/core inputs or CI workflows
