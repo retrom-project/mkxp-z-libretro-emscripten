@@ -5,6 +5,15 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 stage1_image=ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
 emscripten_image=emscripten/emsdk@sha256:92c97951b9a6835cb5da9592e9d95226f67e09ecd01a541d817a5b4801f235a4
 
+record_phase() {
+  local name=$1 started=$2 cache=$3
+  local elapsed=$((SECONDS - started))
+  printf 'MKXP_BUILD_PHASE %s: %ss (cache %s)\n' "$name" "$elapsed" "$cache"
+  if [[ -n ${MKXP_BUILD_TIMINGS:-} ]]; then
+    printf '%s\t%s\t%s\n' "$name" "$elapsed" "$cache" >> "$MKXP_BUILD_TIMINGS"
+  fi
+}
+
 build_stage1() {
   local work=${1:?work directory is required}
   local artifacts=${2:?artifact directory is required}
@@ -158,6 +167,7 @@ case ${1:-} in
 esac
 
 output=${1:?absolute empty output directory is required}
+[[ ${MKXP_EMCC_DEBUG:-0} =~ ^[01]$ ]]
 work=$(mktemp -d "${TMPDIR:-/tmp}/retrom-mkxp-candidate.XXXXXX")
 trap 'rm -rf "$work"' EXIT INT TERM
 python3 "$root/.github/rpg-runtime/source-snapshot.py" --source "$root" --output "$work/input"
@@ -175,7 +185,9 @@ mkdir -p \
 build_uid=$(id -u)
 build_gid=$(id -g)
 
+stage1_started=$SECONDS
 stage1_cached=$(python3 "$root/.github/rpg-runtime/build-cache.py" restore "$cache_root/stage1/$stage1_key" "$work/artifacts/stage1")
+printf 'MKXP_STAGE1_CACHE=%s key=%s\n' "$stage1_cached" "$stage1_key"
 if [[ "$stage1_cached" != hit ]]; then
 docker run --rm --platform linux/amd64 --hostname rpg-runtime-mkxp-stage1 \
   --volume "$source_input:/input:ro" \
@@ -193,10 +205,13 @@ docker run --rm --platform linux/amd64 --hostname rpg-runtime-mkxp-stage1 \
 
 python3 "$root/.github/rpg-runtime/build-cache.py" store "$work/artifacts/stage1" "$cache_root/stage1/$stage1_key"
 fi
+record_phase "Stage 1" "$stage1_started" "$stage1_cached"
 find "$work/stage1" -mindepth 1 -delete
 
+core_started=$SECONDS
 core_key=$(python3 "$root/.github/rpg-runtime/build-cache.py" core-key "$source_input")
 core_cached=$(python3 "$root/.github/rpg-runtime/build-cache.py" restore "$cache_root/core/$core_key" "$work/core-cache")
+printf 'MKXP_CORE_CACHE=%s key=%s\n' "$core_cached" "$core_key"
 if [[ "$core_cached" == hit ]]; then
   install -m 0644 "$work/core-cache/mkxp-z_libretro.a" "$work/artifacts/mkxp-z_libretro.a"
 else
@@ -220,9 +235,12 @@ mkdir -p "$work/core-cache"
 install -m 0644 "$work/artifacts/mkxp-z_libretro.a" "$work/core-cache/mkxp-z_libretro.a"
 python3 "$root/.github/rpg-runtime/build-cache.py" store "$work/core-cache" "$cache_root/core/$core_key"
 fi
+record_phase "MKXP core" "$core_started" "$core_cached"
 find "$work/core" -mindepth 1 -delete
 
+frontend_started=$SECONDS
 docker run --rm --platform linux/amd64 --hostname rpg-runtime-mkxp-frontend \
+  --env "EMCC_DEBUG=${MKXP_EMCC_DEBUG:-0}" \
   --volume "$source_input:/input:ro" \
   --volume "$work:/work" \
   --volume "$output:/output" \
@@ -239,6 +257,7 @@ docker run --rm --platform linux/amd64 --hostname rpg-runtime-mkxp-frontend \
       env XDG_CACHE_HOME=/work/frontend/user-cache XDG_CONFIG_HOME=/work/frontend/user-config \
       /input/.github/rpg-runtime/build-web.sh --frontend-in-container /work/frontend /work/artifacts /output
   ' bash "$build_uid" "$build_gid"
+record_phase "RetroArch frontend" "$frontend_started" rebuilt
 
 wasm_sha=$(sha256sum "$output/mkxp-z_libretro.wasm")
 wasm_sha=${wasm_sha%% *}

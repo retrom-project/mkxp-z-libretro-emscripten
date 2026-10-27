@@ -2,55 +2,70 @@ name: RPG Runtime Release
 
 on:
   workflow_dispatch:
+    inputs:
+      cold-cache:
+        description: Bypass intermediate cache restore and save for a cold measurement
+        type: boolean
+        default: false
+      link-debug:
+        description: Include Emscripten linker diagnostics in the build log
+        type: boolean
+        default: false
   push:
-    tags:
-      - "retrom-core-f2efc98-r*"
+    branches: ["retrom/f2efc98"]
+    tags: ["retrom-core-f2efc98-r*"]
+    # Seed the default branch scope when intermediate build inputs change.
+    # Frontend-only changes can reuse the existing verified intermediates.
+    paths:
+      - .github/workflows/rpg-runtime-*.yml
+      - .github/rpg-runtime/build-web.sh
+      - .github/rpg-runtime/build-cache.py
+      - .github/rpg-runtime/patch-runtime.py
+      - .github/rpg-runtime/mkxp-deterministic-bindings.patch
+      - .github/rpg-runtime/patch-ruby.py
+      - .github/rpg-runtime/ruby-try-catch-unwind.patch
+      - .github/rpg-runtime/patch-build-memory.py
+      - .github/rpg-runtime/patch-startup.py
+      - .github/rpg-runtime/physfs-metadata-stat.patch
+      - retrom-fork.json
+      - mkxp-z
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: rpg-runtime-release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 defaults:
   run:
     shell: bash
 
 jobs:
-  release:
-    name: Build verified MKXP assets and publish immutable release
+  identity:
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: 10
     steps:
-      - name: Check out fixed sources once
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Validate build and release identity
+        run: bash .github/rpg-runtime/verify-release-identity.sh
+
+  build:
+    needs: identity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    outputs:
+      artifact-id: ${{ steps.artifact.outputs.artifact-id }}
+    env:
+      MKXP_BUILD_TIMINGS: ${{ github.workspace }}/.cache/mkxp-build-timings.tsv
+      MKXP_EMCC_DEBUG: ${{ inputs.link-debug && '1' || '0' }}
+    steps:
+      - name: Check out fixed build sources
+        uses: actions/checkout@v7
+        with:
           submodules: recursive
-
-      - name: Validate release identity
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git fetch --no-tags origin \
-            '+refs/heads/retrom/f2efc98:refs/remotes/origin/retrom/f2efc98'
-          if [[ "$GITHUB_REF_TYPE" = tag ]]; then
-            [[ "$GITHUB_REF_NAME" =~ ^retrom-core-f2efc98-r[1-9][0-9]*$ ]]
-            test "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = tag
-            test "$(git rev-list -n 1 "$GITHUB_REF_NAME")" = "$GITHUB_SHA"
-            git merge-base --is-ancestor "$GITHUB_SHA" origin/retrom/f2efc98
-          else
-            [[ "$GITHUB_REF_NAME" =~ ^(retrom|feat|fix|build)/[a-z0-9][a-z0-9/-]*$ ]]
-            git merge-base --is-ancestor origin/retrom/f2efc98 "$GITHUB_SHA"
-          fi
-          git merge-base --is-ancestor \
-            f585dc65499122a7abf503ca5d5dc8ef29452d91 "$GITHUB_SHA"
-          test -z "$(git rev-list --min-parents=2 \
-            bf5f525e864b162bea0789d46932e5f800b80076.."$GITHUB_SHA")"
-          test "$(git rev-parse HEAD:mkxp-z)" = f2efc98a344c505a66820e06d6508092719b8dd2
-          test "$(git rev-parse HEAD:retroarch)" = 69a4f0ea1e8aaf442ae4858f2e7f2b31a1776576
-
       - name: Validate build and native boundary regressions
         run: |
           mkdir -p .cache/test-inputs
@@ -58,53 +73,135 @@ jobs:
             --output .cache/test-inputs/physfs_archiver_zip.c \
             https://raw.githubusercontent.com/icculus/physfs/release-3.2.0/src/physfs_archiver_zip.c
           python3 -m unittest discover -s .github/rpg-runtime -p 'test_*.py'
-
+      - name: Compute intermediate cache key
+        id: keys
+        run: |
+          echo "core=$(python3 .github/rpg-runtime/build-cache.py core-key "$GITHUB_WORKSPACE")" >> "$GITHUB_OUTPUT"
       - name: Restore content-verified intermediate build cache
-        uses: actions/cache@v5
+        if: ${{ !inputs.cold-cache }}
+        id: cache
+        uses: actions/cache/restore@v5
         with:
           path: .cache/rpg-runtime-build
-          key: mkxp-linux-${{ hashFiles('retrom-fork.json', '.github/rpg-runtime/**') }}
+          key: mkxp-linux-${{ steps.keys.outputs.core }}
           restore-keys: mkxp-linux-
-
       - name: Build through the same pinned recipe used by PFB
+        id: build
         run: |
           set -euo pipefail
           output="$RUNNER_TEMP/rpg-runtime-output"
           mkdir "$output"
-          .github/rpg-runtime/build-web.sh "$output"
-
-      - name: Validate and describe tagged assets
-        if: github.ref_type == 'tag'
+          /usr/bin/time -v .github/rpg-runtime/build-web.sh "$output" \
+            2>&1 | tee "$RUNNER_TEMP/mkxp-build.log"
+      # Save before the artifact handoff or publishing job can fail.
+      - name: Save verified intermediate build cache
+        if: ${{ !inputs.cold-cache && steps.cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: .cache/rpg-runtime-build
+          key: mkxp-linux-${{ steps.keys.outputs.core }}
+      - name: Validate and describe assets
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || 'retrom-core-f2efc98-r999999' }}
         run: |
-          set -euo pipefail
           python3 .github/rpg-runtime/verify-release.py \
             --source "$GITHUB_WORKSPACE" \
             --output "$RUNNER_TEMP/rpg-runtime-output" \
             --repository "https://github.com/$GITHUB_REPOSITORY" \
-            --tag "$GITHUB_REF_NAME" \
-            --commit "$GITHUB_SHA"
-
-      - name: Upload integration candidate
+            --tag "$RELEASE_TAG" --commit "$GITHUB_SHA"
+      - name: Upload verified build assets
+        id: artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rpg-runtime-mkxp-${{ github.sha }}
+          name: rpg-runtime-mkxp-${{ github.sha }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/rpg-runtime-output/mkxp-z_libretro.js
             ${{ runner.temp }}/rpg-runtime-output/mkxp-z_libretro.wasm
+            ${{ runner.temp }}/rpg-runtime-output/rpg-runtime-release.json
           if-no-files-found: error
           retention-days: 7
+      - name: Report build timings
+        if: ${{ always() && (steps.build.outcome == 'success' || steps.build.outcome == 'failure') }}
+        env:
+          CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+          CACHE_KEY: ${{ steps.cache.outputs.cache-matched-key }}
+        run: |
+          {
+            echo '### MKXP Web build'
+            echo "Intermediate archive exact hit: ${CACHE_HIT:-false}"
+            echo "Restored archive: ${CACHE_KEY:-none}"
+            echo
+            echo '| Phase | Seconds | Intermediate cache |'
+            echo '| --- | ---: | --- |'
+            if [[ -f "$MKXP_BUILD_TIMINGS" ]]; then
+              awk -F '\t' '{printf "| %s | %s | %s |\n", $1, $2, $3}' "$MKXP_BUILD_TIMINGS"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload build diagnostics
+        if: ${{ always() && (steps.build.outcome == 'success' || steps.build.outcome == 'failure') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: mkxp-build-diagnostics-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/mkxp-build.log
+            ${{ env.MKXP_BUILD_TIMINGS }}
+          if-no-files-found: warn
+          retention-days: 7
 
+  candidate:
+    if: github.ref_type != 'tag'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+          path: ${{ runner.temp }}/rpg-runtime-output
+          merge-multiple: true
+      - name: Check downloaded candidate identity and integrity
+        run: |
+          python3 .github/rpg-runtime/verify-release.py \
+            --source "$GITHUB_WORKSPACE" \
+            --output "$RUNNER_TEMP/rpg-runtime-output" \
+            --repository "https://github.com/$GITHUB_REPOSITORY" \
+            --tag retrom-core-f2efc98-r999999 --commit "$GITHUB_SHA" --check-existing
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+          path: ${{ runner.temp }}/rpg-runtime-output
+          merge-multiple: true
+      - name: Recheck tag and downloaded assets
+        run: |
+          bash .github/rpg-runtime/verify-release-identity.sh
+          python3 .github/rpg-runtime/verify-release.py \
+            --source "$GITHUB_WORKSPACE" \
+            --output "$RUNNER_TEMP/rpg-runtime-output" \
+            --repository "https://github.com/$GITHUB_REPOSITORY" \
+            --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --check-existing
       - name: Create immutable-tag release
-        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
           gh release create "$GITHUB_REF_NAME" \
-            --verify-tag \
-            --target "$GITHUB_SHA" \
-            --title "RPG Runtime mkxp-z Web $GITHUB_REF_NAME" \
-            --generate-notes \
+            --verify-tag --target "$GITHUB_SHA" \
+            --title "RPG Runtime mkxp-z Web $GITHUB_REF_NAME" --generate-notes \
             "$RUNNER_TEMP/rpg-runtime-output/mkxp-z_libretro.js" \
             "$RUNNER_TEMP/rpg-runtime-output/mkxp-z_libretro.wasm" \
             "$RUNNER_TEMP/rpg-runtime-output/rpg-runtime-release.json"

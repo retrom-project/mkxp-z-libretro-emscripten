@@ -17,11 +17,69 @@ That candidate is intended for the aggregate runtime's local asset override
 and Retrom product-chain validation. Only a tag run validates release metadata
 and creates the immutable GitHub Release.
 
-Both tag/dispatch CI and PFB call `build-web.sh`, including its pinned toolchain,
+Both tag/dispatch/default-branch CI and PFB call `build-web.sh`, including its pinned toolchain,
 all native patches, bounded-memory stages and verified intermediate cache. CI
-checks out the fixed sources once and does not maintain a second compilation
-recipe. A tag run revalidates the resulting pair with the actual immutable
-release identity before upload; local diagnostic symbol maps are not assets.
+keeps the compilation recipe in one build job. Separate candidate/publishing
+jobs download that job's exact artifact ID and verify its original metadata
+without rewriting it. Only the tag publishing job has `contents: write`, and
+it rechecks the annotated tag and ancestry before publishing. A failed handoff
+or publish can use **Re-run failed jobs** without rebuilding, while the seven-day
+build artifact remains available. Local diagnostic symbol maps are not assets.
+
+## CI cache reuse and timings
+
+The default maintenance branch builds when Stage 1/core inputs or CI workflows
+change, preparing caches that subsequent tags and work branches can restore.
+GitHub scopes caches to their branch/tag: one tag's cache cannot supply a
+different tag, and a PR cache cannot supply the default branch. For the initial
+seed, or after eviction, dispatch the existing workflow on the default branch:
+
+```sh
+gh workflow run rpg-runtime-release.yml \
+  --repo retrom-project/mkxp-z-libretro-emscripten --ref retrom/f2efc98
+```
+
+Wait for that run to finish before relying on its cache for a new tag. A branch
+dispatch only produces a verified integration candidate; it never creates a
+Release. Official release assets continue to be built and checked by the tag
+workflow, rather than promoted from a PR or branch candidate.
+
+The Actions archive key uses `build-cache.py core-key`, which already includes
+Stage 1's exact source, toolchain and recipe inputs. Test/documentation changes
+and generated Python bytecode do not change the key. A compatible archive
+prefix can supply older intermediate entries; the builder independently checks
+the Stage 1/core input keys and their artifact manifests before reuse. An
+archive prefix match is not an exact Actions cache hit, but its verified inner
+entries can still avoid compilation. Frontend-only changes reuse those entries
+and still compile/link the frontend with the current patched WasmFS sources.
+
+For a controlled cold/warm comparison on a work branch:
+
+```sh
+gh workflow run rpg-runtime-release.yml \
+  --repo retrom-project/mkxp-z-libretro-emscripten --ref <work-branch> \
+  -f cold-cache=true -f link-debug=true
+# After a default-branch seed is available, run with cache restoration:
+gh workflow run rpg-runtime-release.yml \
+  --repo retrom-project/mkxp-z-libretro-emscripten --ref <work-branch> \
+  -f cold-cache=false -f link-debug=true
+```
+
+`cold-cache` skips both Actions restore and save, preserving existing caches.
+Every runner starts with a fresh workspace. Local/PFB builds retain their
+worktree-local caches as before. The build summary reports seconds and inner
+cache hit/miss for Stage 1, MKXP core and the frontend. The diagnostics artifact
+contains the build log, phase timings and `/usr/bin/time` memory/CPU statistics.
+Optional `link-debug` enables `EMCC_DEBUG=1` only in the disposable frontend
+container, preserving release optimization and worker limits while recording
+Emscripten's linker substeps.
+
+`verify-release.py --check-existing` validates the source/ABI, identity, lengths
+and observed asset hashes against the downloaded build's original metadata.
+Missing, mismatched or altered files fail without regenerating that receipt.
+The release schema, adapter ABI and release identity rules remain unchanged.
+
+## Runtime build contract
 
 The tagged superproject fixes the exact mkxp-z and RetroArch gitlinks. A small
 build patch replaces mkxp-z's random sandbox function-type identifiers with
