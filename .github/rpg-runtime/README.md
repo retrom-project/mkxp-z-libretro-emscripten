@@ -69,7 +69,9 @@ gh workflow run rpg-runtime-release.yml \
 Every runner starts with a fresh workspace. Local/PFB builds retain their
 worktree-local caches as before. The build summary reports seconds and inner
 cache hit/miss for Stage 1, MKXP core and the frontend. The diagnostics artifact
-contains the build log, phase timings and `/usr/bin/time` memory/CPU statistics.
+contains the build log, phase timings and the outer `/usr/bin/time` statistics.
+That timer measures the host orchestration process and wall time; its CPU/RSS
+figures do not measure compiler processes inside Docker containers.
 Optional `link-debug` enables `EMCC_DEBUG=1` only in the disposable frontend
 container, preserving release optimization and worker limits while recording
 Emscripten's linker substeps.
