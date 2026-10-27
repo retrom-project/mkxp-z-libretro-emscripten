@@ -49,8 +49,9 @@ class ReleaseAssetsTests(unittest.TestCase):
     def test_changed_download_is_rejected_without_replacing_its_receipt(self):
         self.verify()
         original = self.manifest.read_bytes()
-        with (self.output / "mkxp-z_libretro.js").open("ab") as javascript:
-            javascript.write(b"\n")
+        with (self.output / "mkxp-z_libretro.js").open("r+b") as javascript:
+            javascript.seek(-1, 2)
+            javascript.write(b"!")
         with self.assertRaisesRegex(SystemExit, "RPG_RUNTIME_RELEASE_ASSETS_CHANGED"):
             self.verify("--check-existing")
         self.assertEqual(self.manifest.read_bytes(), original)
