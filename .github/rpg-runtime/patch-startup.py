@@ -110,7 +110,7 @@ def patch_forced_assert(source: str) -> str:
 
 def patch_sandbox_trap(source: str) -> str:
     """Report the sandbox trap category instead of discarding it on Web."""
-    return replace_exact(source, "//#define WASM_RT_DEBUG", "#define WASM_RT_DEBUG")
+    return replace_exact(source, "\n//#define WASM_RT_DEBUG\n", "\n#define WASM_RT_DEBUG\n")
 
 
 def main() -> int:
