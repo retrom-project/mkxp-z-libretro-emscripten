@@ -67,6 +67,7 @@ build_core() {
   mkdir -p "$source_root/mkxp-z/libretro/build/libretro-stage1"
   cp -a "$artifacts/stage1/." \
     "$source_root/mkxp-z/libretro/build/libretro-stage1/"
+  python3 "$source_root/.github/rpg-runtime/patch-binding-cleanup.py" --source "$source_root"
 
   cat > "$work/cross.ini" <<EOF
 [binaries]

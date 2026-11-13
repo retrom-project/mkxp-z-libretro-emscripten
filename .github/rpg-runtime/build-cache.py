@@ -88,6 +88,7 @@ def core_key(source: Path) -> str:
         "recipe": phase_recipe(source, "core"),
         "memory_patch": digest(source / ".github/rpg-runtime/patch-build-memory.py"),
         "startup_patch": digest(source / ".github/rpg-runtime/patch-startup.py"),
+        "binding_cleanup_patch": digest(source / ".github/rpg-runtime/patch-binding-cleanup.py"),
         "zip_stat_patch": digest(source / ".github/rpg-runtime/physfs-metadata-stat.patch"),
     }
     return hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()

@@ -105,9 +105,21 @@ Ruby's try/catch loop stops a caught longjmp unwind without clearing
 the root loop rewound an empty thread buffer (`Sandbox trap`) when a Fiber
 rescued an exception before calling `Graphics.update`.
 
+The core phase applies `patch-binding-cleanup.py` to the generated C++ Ruby
+bindings. Ruby can rescue a native exception while leaving its C++ coroutine
+orphaned; later Ruby code can reuse the argument slots before the next native
+callback prunes that coroutine. Cleanup now retains ownership of its allocated
+arguments in the coroutine instead of rereading those overwritten slots, and
+pruning preserves Ruby's current machine stack pointer. Live resumed calls
+reconstruct this metadata from the existing serialized slots; their layout is
+unchanged. The native regression compiles and executes the actual generated
+file-open binding, including stack reuse, partial initialization, normal return
+and fresh-instance resume. `probes/rescued-native-alias.rb` supplies a minimal
+RGSS3 browser reproduction without third-party game content.
+
 A native sandbox trap or forced assertion publishes the failed game result
 before aborting the core thread, so the browser reports the failure instead of
-leaving a stopped canvas.
+leaving a stopped canvas. Diagnostics retain the specific sandbox trap category.
 
 The browser can read `Module._runtime_get_frame_count()` and
 `Module._runtime_get_state_result()` from the main thread without invoking
