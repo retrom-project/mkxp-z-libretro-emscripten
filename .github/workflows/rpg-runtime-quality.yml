@@ -20,6 +20,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
+      - name: Prepare native regression headers
+        run: |
+          mkdir -p .cache/test-inputs/boost
+          cd .cache/test-inputs/boost
+          apt-get download libboost1.83-dev
+          dpkg-deb --extract libboost1.83-dev_*.deb .
+          echo "CPLUS_INCLUDE_PATH=$PWD/usr/include" >> "$GITHUB_ENV"
       - name: Validate Python and remote-content patch contract
         run: |
           set -euo pipefail

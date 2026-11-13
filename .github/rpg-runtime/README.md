@@ -145,7 +145,10 @@ a large remote project. Symlink resolution and already-broken entries retain
 their existing checks.
 
 The native startup regressions execute the patched upstream font selector and
-PhysFS ZIP stat. Prepare their hash-checked source input before running them:
+PhysFS ZIP stat. The generated-binding regression also requires Ruby, a C++17
+compiler and Boost.Asio headers. CI extracts its Ubuntu Boost headers into
+ignored test inputs without installing system packages. Prepare the hash-checked
+PhysFS source input before running the suite:
 
 ```sh
 mkdir -p .cache/test-inputs
