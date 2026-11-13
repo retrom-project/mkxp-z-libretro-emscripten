@@ -108,12 +108,18 @@ def patch_forced_assert(source: str) -> str:
         "        MKXPZ_RUNTIME_GAME_FAILED(); \\\n")
 
 
+def patch_sandbox_trap(source: str) -> str:
+    """Report the sandbox trap category instead of discarding it on Web."""
+    return replace_exact(source, "\n//#define WASM_RT_DEBUG\n", "\n#define WASM_RT_DEBUG\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
     root = parser.parse_args().source / "mkxp-z"
     for relative, patcher in (("src/display/font.cpp", lambda source: patch_font_scan(patch_font(source))),
                               ("src/core.cpp", patch_core),
+                              ("binding-sandbox/wasm-rt.cpp", patch_sandbox_trap),
                               ("src/util/forced-assert.h", patch_forced_assert),
                               ("src/input/input-retro.cpp", patch_keyboard)):
         path = root / relative

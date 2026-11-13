@@ -26,6 +26,8 @@ on:
       - .github/rpg-runtime/ruby-try-catch-unwind.patch
       - .github/rpg-runtime/patch-build-memory.py
       - .github/rpg-runtime/patch-startup.py
+      - .github/rpg-runtime/patch-binding-cleanup.py
+      - .github/rpg-runtime/patch-ruby-compat.py
       - .github/rpg-runtime/physfs-metadata-stat.patch
       - retrom-fork.json
       - mkxp-z
@@ -66,6 +68,13 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: recursive
+      - name: Prepare native regression headers
+        run: |
+          mkdir -p .cache/test-inputs/boost
+          cd .cache/test-inputs/boost
+          apt-get download libboost1.83-dev
+          dpkg-deb --extract libboost1.83-dev_*.deb .
+          echo "CPLUS_INCLUDE_PATH=$PWD/usr/include" >> "$GITHUB_ENV"
       - name: Validate build and native boundary regressions
         run: |
           mkdir -p .cache/test-inputs

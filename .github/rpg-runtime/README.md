@@ -105,9 +105,28 @@ Ruby's try/catch loop stops a caught longjmp unwind without clearing
 the root loop rewound an empty thread buffer (`Sandbox trap`) when a Fiber
 rescued an exception before calling `Graphics.update`.
 
+The core phase applies `patch-binding-cleanup.py` to the generated C++ Ruby
+bindings. Ruby can rescue a native exception while leaving its C++ coroutine
+orphaned; later Ruby code can reuse the argument slots before the next native
+callback prunes that coroutine. Cleanup now retains ownership of its allocated
+arguments in the coroutine instead of rereading those overwritten slots, and
+pruning preserves Ruby's current machine stack pointer. Live resumed calls
+reconstruct this metadata from the existing serialized slots; their layout is
+unchanged. The native regression compiles and executes the actual generated
+file-open binding, including stack reuse, partial initialization, normal return
+and fresh-instance resume. `probes/rescued-native-alias.rb` supplies a minimal
+RGSS3 browser reproduction without third-party game content.
+
+The core also restores the `Object#taint`, `untaint`, `trust`, `untrust`,
+`tainted?` and `untrusted?` methods removed in Ruby 3.2. These retain Ruby
+2.7–3.1's no-op behavior: mutators return their receiver and queries return
+false. This allows older RGSS menu and save scripts to run on the pinned Ruby
+3.3 sandbox. The regression executes the installed Ruby code against ordinary,
+class, frozen and immediate receivers, including method arity.
+
 A native sandbox trap or forced assertion publishes the failed game result
 before aborting the core thread, so the browser reports the failure instead of
-leaving a stopped canvas.
+leaving a stopped canvas. Diagnostics retain the specific sandbox trap category.
 
 The browser can read `Module._runtime_get_frame_count()` and
 `Module._runtime_get_state_result()` from the main thread without invoking
@@ -133,7 +152,10 @@ a large remote project. Symlink resolution and already-broken entries retain
 their existing checks.
 
 The native startup regressions execute the patched upstream font selector and
-PhysFS ZIP stat. Prepare their hash-checked source input before running them:
+PhysFS ZIP stat. The generated-binding regression also requires Ruby, a C++17
+compiler and Boost.Asio headers. CI extracts its Ubuntu Boost headers into
+ignored test inputs without installing system packages. Prepare the hash-checked
+PhysFS source input before running the suite:
 
 ```sh
 mkdir -p .cache/test-inputs

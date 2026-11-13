@@ -42,6 +42,20 @@ def compile_and_run(source: str, *, cpp: bool = False) -> None:
 
 
 class StartupTests(unittest.TestCase):
+    def test_sandbox_trap_reports_its_specific_category(self):
+        source = startup_patch((ROOT / "mkxp-z/binding-sandbox/wasm-rt.cpp").read_text(), "patch_sandbox_trap")
+        function = source.split('extern "C" WASM_RT_NO_RETURN void wasm_rt_trap', 1)[1].split(
+            'extern "C" void wasm_rt_allocate_memory', 1)[0]
+        categories = ["OOB", "INT_OVERFLOW", "DIV_BY_ZERO", "INVALID_CONVERSION",
+                      "UNREACHABLE", "CALL_INDIRECT", "UNCAUGHT_EXCEPTION", "EXHAUSTION"]
+        enabled = "#define WASM_RT_DEBUG\n" if "\n#define WASM_RT_DEBUG\n" in source else ""
+        compile_and_run('#include <string>\n' + enabled +
+            "enum wasm_rt_trap_t {" + ",".join("WASM_RT_TRAP_" + name for name in categories) + "};\n" +
+            'static std::string message;\n#define MKXPZ_FORCED_ASSERT_WITH_MESSAGE(condition, text) message = text\n' +
+            'void wasm_rt_trap' + function + '\nint main() {\n' +
+            "\n".join(f'wasm_rt_trap(WASM_RT_TRAP_{name}); if (message.find("{name}") == std::string::npos) return {i + 1};'
+                      for i, name in enumerate(categories)) + '\n}\n', cpp=True)
+
     def test_core_publishes_exception_before_destroying_the_game_sandbox(self):
         source = (ROOT / "mkxp-z/src/core.cpp").read_text()
         patched = startup_patch(source, "patch_core")
