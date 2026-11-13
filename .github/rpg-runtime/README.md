@@ -117,6 +117,13 @@ file-open binding, including stack reuse, partial initialization, normal return
 and fresh-instance resume. `probes/rescued-native-alias.rb` supplies a minimal
 RGSS3 browser reproduction without third-party game content.
 
+The core also restores the `Object#taint`, `untaint`, `trust`, `untrust`,
+`tainted?` and `untrusted?` methods removed in Ruby 3.2. These retain Ruby
+2.7–3.1's no-op behavior: mutators return their receiver and queries return
+false. This allows older RGSS menu and save scripts to run on the pinned Ruby
+3.3 sandbox. The regression executes the installed Ruby code against ordinary,
+class, frozen and immediate receivers, including method arity.
+
 A native sandbox trap or forced assertion publishes the failed game result
 before aborting the core thread, so the browser reports the failure instead of
 leaving a stopped canvas. Diagnostics retain the specific sandbox trap category.

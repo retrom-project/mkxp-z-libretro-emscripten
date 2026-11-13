@@ -27,6 +27,7 @@ on:
       - .github/rpg-runtime/patch-build-memory.py
       - .github/rpg-runtime/patch-startup.py
       - .github/rpg-runtime/patch-binding-cleanup.py
+      - .github/rpg-runtime/patch-ruby-compat.py
       - .github/rpg-runtime/physfs-metadata-stat.patch
       - retrom-fork.json
       - mkxp-z
